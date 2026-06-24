@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, CalendarDays, CheckCircle, Clock, Info, Package, RefreshCw } from 'lucide-react';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_URL = import.meta.env.VITE_API_URL || 'https://backend-gaby.vercel.app';
 const today = new Date().toISOString().slice(0, 10);
 
 const categoryLabels = {

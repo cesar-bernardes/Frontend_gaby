@@ -9,7 +9,7 @@ import AdminDashboard from './components/AdminDashboard';
 import Promocoes from './components/Promocoes';
 import Usuario from './components/Usuario';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_URL = import.meta.env.VITE_API_URL || 'https://backend-gaby.vercel.app';
 
 function Header() {
   const location = useLocation();
