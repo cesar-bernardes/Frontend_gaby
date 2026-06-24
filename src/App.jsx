@@ -8,6 +8,7 @@ import Agendamento from './components/Agendamento';
 import AdminDashboard from './components/AdminDashboard';
 import Promocoes from './components/Promocoes';
 import Usuario from './components/Usuario';
+import { authHeaders } from './lib/auth';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://backend-gaby.vercel.app';
 
@@ -32,7 +33,10 @@ function BottomNav() {
   useEffect(() => {
     let active = true;
 
-    fetch(`${API_URL}/api/me`, { credentials: 'include' })
+    fetch(`${API_URL}/api/me`, {
+      credentials: 'include',
+      headers: authHeaders(),
+    })
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
         if (active) setRole(data?.user?.role || null);

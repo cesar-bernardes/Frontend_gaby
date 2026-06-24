@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, CalendarDays, CheckCircle, Clock, Info, Package, RefreshCw } from 'lucide-react';
+import { authHeaders } from '../lib/auth';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://backend-gaby.vercel.app';
 const today = new Date().toISOString().slice(0, 10);
@@ -16,8 +17,8 @@ const weekdayLabels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
 async function api(path, options = {}) {
   const response = await fetch(`${API_URL}${path}`, {
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
+    headers: authHeaders({ 'Content-Type': 'application/json', ...(options.headers || {}) }),
   });
   const data = await response.json().catch(() => ({}));
 

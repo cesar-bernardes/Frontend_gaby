@@ -1,10 +1,28 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { setAuthToken } from '../lib/auth';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://backend-gaby.vercel.app';
 
 const onlyDigits = (value) => String(value || '').replace(/\D/g, '');
+const normalizePhone = (value) => {
+  let digits = onlyDigits(value);
+
+  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+    digits = digits.slice(2);
+  }
+
+  if (digits.startsWith('0') && (digits.length === 11 || digits.length === 12)) {
+    digits = digits.slice(1);
+  }
+
+  if (digits.length === 10 && /^[6-9]/.test(digits.slice(2, 3))) {
+    return `${digits.slice(0, 2)}9${digits.slice(2)}`;
+  }
+
+  return digits;
+};
 
 async function apiPost(path, body) {
   const response = await fetch(`${API_URL}${path}`, {
@@ -40,9 +58,9 @@ export default function Login() {
   };
 
   const handlePhoneStep = async () => {
-    const normalizedPhone = onlyDigits(phone);
+    const normalizedPhone = normalizePhone(phone);
 
-    if (normalizedPhone.length < 10) {
+    if (![10, 11].includes(normalizedPhone.length)) {
       setMessage('Digite um WhatsApp valido.');
       return;
     }
@@ -60,6 +78,7 @@ export default function Login() {
       }
 
       const login = await apiPost('/api/login', { phone: normalizedPhone });
+      setAuthToken(login.token);
       navigate(login.user?.role === 'ADM' ? '/admin' : '/feed');
     } catch (error) {
       setMessage(error.message);
@@ -69,7 +88,7 @@ export default function Login() {
   };
 
   const handleRegisterStep = async () => {
-    const normalizedPhone = onlyDigits(phone);
+    const normalizedPhone = normalizePhone(phone);
     const trimmedName = name.trim();
 
     if (trimmedName.length < 2) {
@@ -85,6 +104,7 @@ export default function Login() {
         phone: normalizedPhone,
         name: trimmedName,
       });
+      setAuthToken(register.token);
       navigate(register.user?.role === 'ADM' ? '/admin' : '/feed');
     } catch (error) {
       setMessage(error.message);

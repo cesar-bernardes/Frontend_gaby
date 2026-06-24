@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   CalendarDays,
   CheckCircle,
@@ -13,6 +14,7 @@ import {
   TrendingUp,
   Users,
 } from 'lucide-react';
+import { authHeaders, clearAuthToken } from '../lib/auth';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://backend-gaby.vercel.app';
 const today = new Date().toISOString().slice(0, 10);
@@ -52,12 +54,17 @@ const statusLabels = {
 async function api(path, options = {}) {
   const response = await fetch(`${API_URL}${path}`, {
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
+    headers: authHeaders({ 'Content-Type': 'application/json', ...(options.headers || {}) }),
   });
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    if (response.status === 401) {
+      clearAuthToken();
+      throw new Error('Entre novamente para acessar o painel ADM.');
+    }
+
     throw new Error(data.message || 'Nao foi possivel continuar');
   }
 
@@ -126,6 +133,7 @@ function Section({ title, icon: Icon, children }) {
 }
 
 export default function AdminDashboard() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [dashboard, setDashboard] = useState(null);
   const [studio, setStudio] = useState(null);
@@ -415,6 +423,16 @@ export default function AdminDashboard() {
           <ShieldCheck className="mx-auto text-brand-pink-dark mb-3" />
           <h1 className="font-extrabold text-brand-dark">Acesso ADM</h1>
           <p className="text-sm text-gray-500 mt-2">{message}</p>
+          <button
+            type="button"
+            onClick={() => {
+              clearAuthToken();
+              navigate('/');
+            }}
+            className="mt-5 w-full rounded-xl bg-brand-pink-dark px-4 py-3 text-sm font-bold text-white active:scale-95 transition-transform"
+          >
+            Entrar novamente
+          </button>
         </div>
       </div>
     );
