@@ -227,9 +227,13 @@ export default function Agendamento() {
                 className="w-full p-4 bg-white border-2 rounded-2xl text-left transition-all flex justify-between items-center border-gray-100 shadow-sm active:scale-[0.99]"
               >
                 <div className="flex items-center gap-3">
+                  {service.imageUrl ? (
+                    <img src={service.imageUrl} alt={service.name} className="h-12 w-12 rounded-xl object-cover" />
+                  ) : (
                   <div className="p-3 rounded-xl bg-gray-100 text-gray-500">
                     <Package size={22} />
                   </div>
+                  )}
                   <div>
                     <h3 className="font-bold text-base text-gray-800">{service.name}</h3>
                     <div className="flex items-center text-xs mt-1 gap-2 text-gray-500">
@@ -269,10 +273,15 @@ export default function Agendamento() {
               trocar servico
             </button>
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs text-gray-500">{categoryLabels[selectedService.category] || selectedService.category}</p>
-                <h3 className="font-extrabold text-brand-dark">{selectedService.name}</h3>
-                <p className="text-xs text-gray-500 mt-1">{selectedService.durationMinutes} min</p>
+              <div className="flex gap-3">
+                {selectedService.imageUrl && (
+                  <img src={selectedService.imageUrl} alt={selectedService.name} className="h-14 w-14 rounded-xl object-cover" />
+                )}
+                <div>
+                  <p className="text-xs text-gray-500">{categoryLabels[selectedService.category] || selectedService.category}</p>
+                  <h3 className="font-extrabold text-brand-dark">{selectedService.name}</h3>
+                  <p className="text-xs text-gray-500 mt-1">{selectedService.durationMinutes} min</p>
+                </div>
               </div>
               <span className="font-extrabold text-brand-dark">{formatMoney(selectedService.priceCents)}</span>
             </div>

@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CalendarDays,
   CheckCircle,
   ClipboardList,
+  Image as ImageIcon,
   Package,
   Plus,
   RefreshCw,
@@ -12,6 +13,7 @@ import {
   ShieldCheck,
   Trash2,
   TrendingUp,
+  Upload,
   Users,
 } from 'lucide-react';
 import { authHeaders, clearAuthToken } from '../lib/auth';
@@ -22,6 +24,7 @@ const today = new Date().toISOString().slice(0, 10);
 const emptyService = {
   name: '',
   description: '',
+  imageUrl: '',
   price: '',
   durationMinutes: 60,
   category: 'moment',
@@ -120,6 +123,34 @@ function TextInput(props) {
   );
 }
 
+const imageFileToDataUrl = (file) => new Promise((resolve, reject) => {
+  if (!file) return resolve('');
+  if (!file.type.startsWith('image/')) return reject(new Error('Escolha uma imagem valida.'));
+  if (file.size > 8 * 1024 * 1024) return reject(new Error('Use uma imagem com ate 8 MB.'));
+
+  const reader = new FileReader();
+  reader.onerror = () => reject(new Error('Nao foi possivel carregar a imagem.'));
+  reader.onload = () => {
+    const image = new window.Image();
+    image.onerror = () => resolve(String(reader.result || ''));
+    image.onload = () => {
+      const maxSize = 1000;
+      const scale = Math.min(1, maxSize / image.width, maxSize / image.height);
+      const width = Math.max(1, Math.round(image.width * scale));
+      const height = Math.max(1, Math.round(image.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (!context) return resolve(String(reader.result || ''));
+      context.drawImage(image, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    image.src = String(reader.result || '');
+  };
+  reader.readAsDataURL(file);
+});
+
 function Section({ title, icon: Icon, children }) {
   return (
     <section className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-4">
@@ -134,6 +165,7 @@ function Section({ title, icon: Icon, children }) {
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
+  const serviceFormRef = useRef(null);
   const [user, setUser] = useState(null);
   const [dashboard, setDashboard] = useState(null);
   const [studio, setStudio] = useState(null);
@@ -280,6 +312,7 @@ export default function AdminDashboard() {
       const payload = {
         name: serviceForm.name,
         description: serviceForm.description,
+        imageUrl: serviceForm.imageUrl,
         priceCents: priceToCents(serviceForm.price),
         durationMinutes: Number(serviceForm.durationMinutes),
         category: serviceForm.category,
@@ -306,11 +339,29 @@ export default function AdminDashboard() {
     setServiceForm({
       name: service.name,
       description: service.description || '',
+      imageUrl: service.imageUrl || '',
       price: (Number(service.priceCents || 0) / 100).toFixed(2),
       durationMinutes: service.durationMinutes || 60,
       category: service.category || 'moment',
       active: service.active !== false,
     });
+    window.requestAnimationFrame(() => {
+      serviceFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
+  const updateServicePhoto = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    try {
+      const imageUrl = await imageFileToDataUrl(file);
+      setServiceForm((current) => ({ ...current, imageUrl }));
+      setMessage('Foto carregada. Clique em Salvar para aplicar.');
+    } catch (error) {
+      setMessage(error.message);
+    }
   };
 
   const toggleService = async (service) => {
@@ -549,13 +600,47 @@ export default function AdminDashboard() {
 
       {activeTab === 'services' && (
         <div className="space-y-4">
-          <Section title={editingServiceId ? 'Editar servico' : 'Novo servico'} icon={Package}>
+          <div ref={serviceFormRef}>
+          <Section title={editingServiceId ? 'Editar servico ou combo' : 'Novo servico ou combo'} icon={Package}>
             <form onSubmit={saveService} className="space-y-3">
               <Field label="Nome">
                 <TextInput value={serviceForm.name} onChange={(event) => setServiceForm({ ...serviceForm, name: event.target.value })} required />
               </Field>
               <Field label="Descricao opcional">
                 <TextInput value={serviceForm.description} onChange={(event) => setServiceForm({ ...serviceForm, description: event.target.value })} />
+              </Field>
+              <Field label="Foto">
+                <div className="mt-1 rounded-xl border border-gray-200 bg-white p-3">
+                  {serviceForm.imageUrl ? (
+                    <img src={serviceForm.imageUrl} alt={serviceForm.name || 'Foto do servico'} className="h-36 w-full rounded-lg object-cover" />
+                  ) : (
+                    <div className="flex h-36 w-full flex-col items-center justify-center rounded-lg bg-gray-50 text-gray-400">
+                      <ImageIcon size={24} />
+                      <span className="mt-2 text-xs font-bold">Sem foto</span>
+                    </div>
+                  )}
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-gray-200 p-3 text-xs font-bold text-gray-600">
+                      <Upload size={14} />
+                      {serviceForm.imageUrl ? 'Trocar foto' : 'Adicionar foto'}
+                      <input type="file" accept="image/*" onChange={updateServicePhoto} className="hidden" />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setServiceForm({ ...serviceForm, imageUrl: '' })}
+                      disabled={!serviceForm.imageUrl}
+                      className="rounded-xl border border-gray-200 p-3 text-xs font-bold text-gray-600 disabled:opacity-40"
+                    >
+                      Remover foto
+                    </button>
+                  </div>
+                  <TextInput
+                    value={serviceForm.imageUrl}
+                    onChange={(event) => setServiceForm({ ...serviceForm, imageUrl: event.target.value })}
+                    placeholder="Ou cole a URL da foto"
+                    className="text-xs"
+                  />
+                </div>
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Valor">
@@ -609,18 +694,28 @@ export default function AdminDashboard() {
               </div>
             </form>
           </Section>
+          </div>
 
           <Section title="Servicos cadastrados" icon={Package}>
             <div className="space-y-2">
               {services.map((service) => (
                 <div key={service.id} className="rounded-xl border border-gray-100 p-3">
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-extrabold text-gray-800">{service.name}</p>
-                      <p className="text-xs text-gray-500">
-                        {categoryLabels[service.category] || service.category} - {service.durationMinutes} min - {money(service.priceCents)}
-                      </p>
-                      {service.description && <p className="text-xs text-gray-400 mt-1">{service.description}</p>}
+                    <div className="flex min-w-0 gap-3">
+                      {service.imageUrl ? (
+                        <img src={service.imageUrl} alt={service.name} className="h-14 w-14 shrink-0 rounded-xl object-cover" />
+                      ) : (
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gray-50 text-gray-300">
+                          <ImageIcon size={20} />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-extrabold text-gray-800">{service.name}</p>
+                        <p className="text-xs text-gray-500">
+                          {categoryLabels[service.category] || service.category} - {service.durationMinutes} min - {money(service.priceCents)}
+                        </p>
+                        {service.description && <p className="text-xs text-gray-400 mt-1">{service.description}</p>}
+                      </div>
                     </div>
                     <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${service.active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                       {service.active ? 'Ativo' : 'Inativo'}

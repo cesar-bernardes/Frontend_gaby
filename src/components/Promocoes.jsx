@@ -34,9 +34,13 @@ function PlanCard({ service, onSelect }) {
 
   return (
     <div className="min-w-[280px] snap-center bg-white p-5 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-[#FFF0F5] flex flex-col">
-      <div className="w-full h-36 bg-gray-100 rounded-2xl mb-5 flex flex-col items-center justify-center text-gray-300 border-2 border-dashed border-gray-200">
-        <span className="text-xs font-semibold uppercase tracking-widest">Espaco para Foto</span>
-      </div>
+      {service.imageUrl ? (
+        <img src={service.imageUrl} alt={service.name} className="w-full h-36 rounded-2xl mb-5 object-cover" />
+      ) : (
+        <div className="w-full h-36 bg-gray-100 rounded-2xl mb-5 flex flex-col items-center justify-center text-gray-300 border-2 border-dashed border-gray-200">
+          <span className="text-xs font-semibold uppercase tracking-widest">Espaco para Foto</span>
+        </div>
+      )}
 
       <h3 className="text-center text-lg font-serif text-[#D4AF37] mb-1 uppercase tracking-widest font-bold">
         {service.name.replace(/^Plano\s+/i, '')}
