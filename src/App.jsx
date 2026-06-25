@@ -20,7 +20,7 @@ function Header() {
   return (
     <header className="bg-white flex justify-between items-center py-3 px-4 shrink-0 border-b border-gray-100 shadow-sm z-20">
       <h1 className="text-xl font-extrabold text-[#2C3E50] tracking-tighter" style={{ fontFamily: 'cursive' }}>
-        Gabriely<span className="text-[#DB7093] font-sans">Dias</span>
+        Gabriely<span className="text-[#DB7093]">Dias</span>
       </h1>
     </header>
   );
