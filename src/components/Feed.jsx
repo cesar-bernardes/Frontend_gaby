@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { MapPin, RefreshCw } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, MapPin, RefreshCw } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://backend-gaby.vercel.app';
 
@@ -38,7 +38,7 @@ async function api(path) {
 
 function FeedPostCard({ post }) {
   return (
-    <article className="w-full rounded-[28px] border border-white bg-gradient-to-br from-[#faf9f7] via-[#FFF0F5] to-[#f4ebe1] shadow-[0_8px_30px_rgb(0,0,0,0.06)] overflow-hidden">
+    <article className="h-full overflow-hidden rounded-[28px] border border-white bg-gradient-to-br from-[#faf9f7] via-[#FFF0F5] to-[#f4ebe1] shadow-[0_8px_30px_rgb(0,0,0,0.06)]">
       {post.imageUrl && (
         <img src={post.imageUrl} alt={post.title} className="h-44 w-full object-cover" />
       )}
@@ -91,7 +91,9 @@ function FeedPostCard({ post }) {
 }
 
 export default function Feed() {
+  const carouselRef = useRef(null);
   const [posts, setPosts] = useState(fallbackPosts);
+  const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -99,7 +101,10 @@ export default function Feed() {
 
     api('/api/feed/posts')
       .then((data) => {
-        if (active && data.length) setPosts(data);
+        if (active && data.length) {
+          setPosts(data);
+          setActiveIndex(0);
+        }
       })
       .catch(() => {})
       .finally(() => {
@@ -110,6 +115,24 @@ export default function Feed() {
       active = false;
     };
   }, []);
+
+  const goToPost = (index) => {
+    const nextIndex = Math.max(0, Math.min(posts.length - 1, index));
+    setActiveIndex(nextIndex);
+    const carousel = carouselRef.current;
+    if (!carousel) return;
+    carousel.scrollTo({
+      left: nextIndex * carousel.clientWidth,
+      behavior: 'smooth',
+    });
+  };
+
+  const syncActiveCard = () => {
+    const carousel = carouselRef.current;
+    if (!carousel) return;
+    const index = Math.round(carousel.scrollLeft / carousel.clientWidth);
+    setActiveIndex(Math.max(0, Math.min(posts.length - 1, index)));
+  };
 
   return (
     <div className="bg-[#fcfcfc] min-h-full pb-24">
@@ -136,10 +159,54 @@ export default function Feed() {
         </div>
       )}
 
-      <div className="flex flex-col gap-6 mt-8 px-5">
-        {posts.map((post) => (
-          <FeedPostCard key={post.id} post={post} />
-        ))}
+      <div className="mt-7 px-5">
+        <div
+          ref={carouselRef}
+          onScroll={syncActiveCard}
+          className="flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth no-scrollbar"
+        >
+          {posts.map((post) => (
+            <div key={post.id} className="min-w-full snap-center">
+              <FeedPostCard post={post} />
+            </div>
+          ))}
+        </div>
+
+        {posts.length > 1 && (
+          <div className="mt-4 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => goToPost(activeIndex - 1)}
+              disabled={activeIndex === 0}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-100 bg-white text-gray-500 shadow-sm disabled:opacity-35"
+              title="Anterior"
+            >
+              <ChevronLeft size={18} />
+            </button>
+
+            <div className="flex items-center gap-2">
+              {posts.map((post, index) => (
+                <button
+                  type="button"
+                  key={post.id}
+                  onClick={() => goToPost(index)}
+                  className={`h-2 rounded-full transition-all ${activeIndex === index ? 'w-7 bg-[#DB7093]' : 'w-2 bg-gray-300'}`}
+                  title={`Ir para ${post.title}`}
+                />
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => goToPost(activeIndex + 1)}
+              disabled={activeIndex === posts.length - 1}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-100 bg-white text-gray-500 shadow-sm disabled:opacity-35"
+              title="Proximo"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
