@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, CalendarDays, CheckCircle, Clock, Info, Package, RefreshCw } from 'lucide-react';
+import { ArrowLeft, CalendarCheck, CalendarDays, CheckCircle, Clock, Info, Package, RefreshCw } from 'lucide-react';
 import { authHeaders } from '../lib/auth';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://backend-gaby.vercel.app';
@@ -48,6 +48,7 @@ export default function Agendamento() {
   const [services, setServices] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || 'moment');
   const [selectedService, setSelectedService] = useState(null);
+  const [showDepositInfo, setShowDepositInfo] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [date, setDate] = useState('');
   const [selectedSlot, setSelectedSlot] = useState(null);
@@ -61,6 +62,9 @@ export default function Agendamento() {
   const calendarDays = useMemo(() => Array.from({ length: 30 }, (_, index) => addDays(today, index)), []);
   const selectedDateSlots = date ? slotsByDate[date] || [] : [];
   const availableSlots = selectedDateSlots.filter((slot) => slot.available);
+  const totalCents = Number(selectedService?.priceCents || 0);
+  const depositCents = Math.round(totalCents * 0.4);
+  const remainingCents = Math.max(0, totalCents - depositCents);
 
   const categoryTabs = useMemo(() => {
     const serviceCategories = [...new Set(services.map((service) => service.category || 'moment'))];
@@ -86,6 +90,7 @@ export default function Agendamento() {
         setServices(data);
         setSelectedCategory(initialCategory);
         setSelectedService(targetService || null);
+        setShowDepositInfo(!appointmentId && searchParams.get('step') === 'deposit');
         setShowCalendar(Boolean(appointmentId) || searchParams.get('step') === 'calendar');
       })
       .catch((error) => setMessage(error.message))
@@ -125,6 +130,7 @@ export default function Agendamento() {
 
   const openDetails = (service) => {
     setSelectedService(service);
+    setShowDepositInfo(false);
     setShowCalendar(false);
     setDate('');
     setSelectedSlot(null);
@@ -137,6 +143,7 @@ export default function Agendamento() {
 
   const continueToCalendar = () => {
     if (!selectedService) return;
+    setShowDepositInfo(false);
     setShowCalendar(true);
     setSearchParams({
       serviceId: selectedService.id,
@@ -146,8 +153,21 @@ export default function Agendamento() {
     });
   };
 
+  const openDepositInfo = () => {
+    if (!selectedService) return;
+    setShowDepositInfo(true);
+    setShowCalendar(false);
+    setSearchParams({
+      serviceId: selectedService.id,
+      category: selectedService.category || 'moment',
+      step: 'deposit',
+      ...(appointmentId ? { appointmentId } : {}),
+    });
+  };
+
   const backFromDetails = () => {
     setSelectedService(null);
+    setShowDepositInfo(false);
     setShowCalendar(false);
     setDate('');
     setSelectedSlot(null);
@@ -211,12 +231,14 @@ export default function Agendamento() {
     <div className="bg-brand-pink-light h-full pt-8 px-5 pb-32 overflow-y-auto no-scrollbar">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-6 border-l-4 border-brand-pink-dark pl-4 py-1">
         <h2 className="text-2xl font-extrabold text-brand-dark tracking-tighter">
-          {selectedService && showCalendar ? 'Escolha o Dia' : selectedService ? 'Detalhes' : 'Escolha seu Momento'}
+          {selectedService && showCalendar ? 'Escolha o Dia' : selectedService && showDepositInfo ? 'Informacao importante' : selectedService ? 'Detalhes' : 'Escolha seu Momento'}
         </h2>
         <p className="text-gray-500 text-sm mt-1">
           {selectedService && showCalendar
             ? 'Depois de escolher o dia, selecione um horario livre.'
-            : selectedService
+            : selectedService && showDepositInfo
+              ? 'Leia antes de continuar para a agenda.'
+              : selectedService
               ? 'Confira as informacoes antes de escolher o horario.'
               : 'Selecione um servico para ver os detalhes.'}
         </p>
@@ -286,7 +308,7 @@ export default function Agendamento() {
         </>
       )}
 
-      {selectedService && !showCalendar && (
+      {selectedService && !showDepositInfo && !showCalendar && (
         <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
           <button
             type="button"
@@ -355,11 +377,87 @@ export default function Agendamento() {
 
               <button
                 type="button"
-                onClick={continueToCalendar}
+                onClick={appointmentId ? continueToCalendar : openDepositInfo}
                 className="w-full bg-brand-dark text-white p-4 rounded-2xl font-extrabold text-base shadow-lg active:scale-95 transition-all"
               >
-                Escolher horario
+                Eu quero
               </button>
+            </div>
+          </section>
+        </motion.div>
+      )}
+
+      {selectedService && showDepositInfo && !showCalendar && (
+        <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+          <button
+            type="button"
+            onClick={() => {
+              setShowDepositInfo(false);
+              setSearchParams({ serviceId: selectedService.id, category: selectedService.category || 'moment' });
+            }}
+            className="text-xs font-bold text-gray-500 flex items-center gap-1"
+          >
+            <ArrowLeft size={14} />
+            voltar
+          </button>
+
+          <section className="bg-white border border-white rounded-[28px] shadow-[0_8px_30px_rgb(0,0,0,0.06)] overflow-hidden">
+            <div className="bg-gradient-to-br from-[#FFF0F5] via-white to-[#f7ecef] px-5 py-6 text-center">
+              <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-white text-brand-pink-dark shadow-sm">
+                <CalendarCheck size={28} />
+              </div>
+              <h3 className="text-xl font-extrabold text-brand-dark tracking-tight">
+                Informacao importante sobre o agendamento
+              </h3>
+              <p className="mt-3 text-sm leading-relaxed text-gray-600">
+                Para confirmar o seu agendamento, e necessario o pagamento antecipado de 40% do valor do servico escolhido. Apos a confirmacao da data e horario, nossa equipe entrara em contato pelo WhatsApp para orientar voce sobre o pagamento desse valor.
+              </p>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="rounded-2xl border border-brand-pink bg-brand-pink-light/60 p-4">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-brand-pink-dark">Servico escolhido</p>
+                <p className="mt-1 text-base font-extrabold text-brand-dark">{selectedService.name}</p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between rounded-2xl bg-gray-50 p-4">
+                  <span className="text-sm font-bold text-gray-600">Valor total</span>
+                  <span className="text-sm font-extrabold text-brand-dark">{formatMoney(totalCents)}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-2xl bg-brand-pink-light p-4">
+                  <span className="text-sm font-bold text-gray-600">Valor antecipado de 40%</span>
+                  <span className="text-sm font-extrabold text-brand-pink-dark">{formatMoney(depositCents)}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-2xl bg-gray-50 p-4">
+                  <span className="text-sm font-bold text-gray-600">Restante no atendimento</span>
+                  <span className="text-sm font-extrabold text-brand-dark">{formatMoney(remainingCents)}</span>
+                </div>
+              </div>
+
+              <p className="rounded-2xl border border-gray-100 bg-white p-4 text-xs leading-relaxed text-gray-500">
+                Neste momento nao ha pagamento online automatico. A cobranca sera combinada depois pelo WhatsApp.
+              </p>
+
+              <div className="grid grid-cols-1 gap-2">
+                <button
+                  type="button"
+                  onClick={continueToCalendar}
+                  className="w-full rounded-2xl bg-brand-dark p-4 text-base font-extrabold text-white shadow-lg active:scale-95 transition-all"
+                >
+                  Continuar para agenda
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDepositInfo(false);
+                    setSearchParams({ serviceId: selectedService.id, category: selectedService.category || 'moment' });
+                  }}
+                  className="w-full rounded-2xl border border-gray-200 bg-white p-3 text-sm font-bold text-gray-500 active:scale-95 transition-all"
+                >
+                  Voltar
+                </button>
+              </div>
             </div>
           </section>
         </motion.div>
