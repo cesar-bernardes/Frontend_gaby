@@ -4,7 +4,10 @@ import {
   CalendarDays,
   CheckCircle,
   ClipboardList,
+  FileText,
+  Home,
   Image as ImageIcon,
+  ListChecks,
   Package,
   Plus,
   RefreshCw,
@@ -25,9 +28,20 @@ const emptyService = {
   name: '',
   description: '',
   imageUrl: '',
+  benefitsText: '',
+  notes: '',
   price: '',
   durationMinutes: 60,
   category: 'moment',
+  active: true,
+};
+
+const emptyFeedPost = {
+  title: '',
+  subtitle: '',
+  imageUrl: '',
+  contentText: '',
+  footer: '',
   active: true,
 };
 
@@ -45,6 +59,8 @@ const categoryLabels = {
   monthly: 'Planos mensais',
   moment: 'Escolha seu Momento',
 };
+
+const categoryOrder = ['monthly', 'moment'];
 
 const statusLabels = {
   PENDING: 'Pendente',
@@ -76,6 +92,24 @@ async function api(path, options = {}) {
 
 const money = (cents = 0) => `R$ ${(Number(cents || 0) / 100).toFixed(2).replace('.', ',')}`;
 const priceToCents = (value) => Math.round(Number(String(value || '0').replace(',', '.')) * 100);
+const linesToList = (value) => String(value || '').split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+const contentToText = (content = []) => content.map((item) => {
+  if (item.bullet) return item.bullet;
+  if (item.label && item.value) return `${item.label} = ${item.value}`;
+  if (item.label && item.desc) return `${item.label}: ${item.desc}`;
+  return '';
+}).filter(Boolean).join('\n');
+const textToContent = (value) => linesToList(value).map((line) => {
+  if (line.includes('=')) {
+    const [label, ...rest] = line.split('=');
+    return { label: label.trim(), value: rest.join('=').trim() };
+  }
+  if (line.includes(':')) {
+    const [label, ...rest] = line.split(':');
+    return { label: label.trim(), desc: rest.join(':').trim() };
+  }
+  return { bullet: line };
+});
 const dateWeekday = (date) => {
   const [year, month, day] = String(date).split('-').map(Number);
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
@@ -123,6 +157,15 @@ function TextInput(props) {
   );
 }
 
+function TextArea(props) {
+  return (
+    <textarea
+      {...props}
+      className={`mt-1 min-h-[92px] w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-pink-dark ${props.className || ''}`}
+    />
+  );
+}
+
 const imageFileToDataUrl = (file) => new Promise((resolve, reject) => {
   if (!file) return resolve('');
   if (!file.type.startsWith('image/')) return reject(new Error('Escolha uma imagem valida.'));
@@ -166,11 +209,13 @@ function Section({ title, icon: Icon, children }) {
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const serviceFormRef = useRef(null);
+  const homeFormRef = useRef(null);
   const [user, setUser] = useState(null);
   const [dashboard, setDashboard] = useState(null);
   const [studio, setStudio] = useState(null);
   const [studioForm, setStudioForm] = useState(emptyStudio);
   const [services, setServices] = useState([]);
+  const [feedPosts, setFeedPosts] = useState([]);
   const [users, setUsers] = useState([]);
   const [availability, setAvailability] = useState({
     dates: [],
@@ -186,6 +231,8 @@ export default function AdminDashboard() {
   const [appointments, setAppointments] = useState([]);
   const [serviceForm, setServiceForm] = useState(emptyService);
   const [editingServiceId, setEditingServiceId] = useState(null);
+  const [feedForm, setFeedForm] = useState(emptyFeedPost);
+  const [editingFeedPostId, setEditingFeedPostId] = useState(null);
   const [availabilityForm, setAvailabilityForm] = useState({
     date: today,
   });
@@ -211,6 +258,20 @@ export default function AdminDashboard() {
     [appointments, availabilityForm.date],
   );
   const calendarDays = useMemo(() => Array.from({ length: 30 }, (_, index) => addDays(today, index)), []);
+  const groupedServices = useMemo(() => {
+    const categories = [...new Set(services.map((service) => service.category || 'moment'))]
+      .sort((left, right) => {
+        const leftIndex = categoryOrder.indexOf(left);
+        const rightIndex = categoryOrder.indexOf(right);
+        return (leftIndex === -1 ? 99 : leftIndex) - (rightIndex === -1 ? 99 : rightIndex);
+      });
+
+    return categories.map((category) => ({
+      category,
+      label: categoryLabels[category] || category,
+      items: services.filter((service) => (service.category || 'moment') === category),
+    }));
+  }, [services]);
 
   const loadAdminData = async () => {
     setLoading(true);
@@ -226,10 +287,11 @@ export default function AdminDashboard() {
         return;
       }
 
-      const [dashboardData, studioData, serviceData, userData, availabilityData, appointmentData] = await Promise.all([
+      const [dashboardData, studioData, serviceData, feedPostData, userData, availabilityData, appointmentData] = await Promise.all([
         api('/api/admin/dashboard'),
         api('/api/studio'),
         api('/api/admin/services'),
+        api('/api/admin/feed/posts'),
         api('/api/admin/users'),
         api('/api/admin/availability'),
         api('/api/admin/appointments'),
@@ -248,6 +310,7 @@ export default function AdminDashboard() {
         slotIntervalMinutes: studioData.policy?.slotIntervalMinutes || 30,
       });
       setServices(serviceData);
+      setFeedPosts(feedPostData);
       setUsers(userData);
       setAvailability({
         dates: availabilityData.dates || [],
@@ -313,6 +376,8 @@ export default function AdminDashboard() {
         name: serviceForm.name,
         description: serviceForm.description,
         imageUrl: serviceForm.imageUrl,
+        benefits: linesToList(serviceForm.benefitsText),
+        notes: serviceForm.notes,
         priceCents: priceToCents(serviceForm.price),
         durationMinutes: Number(serviceForm.durationMinutes),
         category: serviceForm.category,
@@ -340,6 +405,8 @@ export default function AdminDashboard() {
       name: service.name,
       description: service.description || '',
       imageUrl: service.imageUrl || '',
+      benefitsText: (service.benefits || []).join('\n'),
+      notes: service.notes || '',
       price: (Number(service.priceCents || 0) / 100).toFixed(2),
       durationMinutes: service.durationMinutes || 60,
       category: service.category || 'moment',
@@ -359,6 +426,92 @@ export default function AdminDashboard() {
       const imageUrl = await imageFileToDataUrl(file);
       setServiceForm((current) => ({ ...current, imageUrl }));
       setMessage('Foto carregada. Clique em Salvar para aplicar.');
+    } catch (error) {
+      setMessage(error.message);
+    }
+  };
+
+  const startNewService = (category = 'moment') => {
+    setEditingServiceId(null);
+    setServiceForm({ ...emptyService, category });
+    window.requestAnimationFrame(() => {
+      serviceFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
+  const saveFeedPost = async (event) => {
+    event.preventDefault();
+    setMessage('');
+
+    try {
+      const payload = {
+        title: feedForm.title,
+        subtitle: feedForm.subtitle,
+        imageUrl: feedForm.imageUrl,
+        content: textToContent(feedForm.contentText),
+        footer: feedForm.footer,
+        active: feedForm.active,
+      };
+
+      await api(editingFeedPostId ? `/api/feed/posts/${editingFeedPostId}` : '/api/feed/posts', {
+        method: editingFeedPostId ? 'PUT' : 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      setFeedForm(emptyFeedPost);
+      setEditingFeedPostId(null);
+      await loadAdminData();
+      setActiveTab('home');
+      setMessage('Conteudo do inicio salvo.');
+    } catch (error) {
+      setMessage(error.message);
+    }
+  };
+
+  const editFeedPost = (post) => {
+    setEditingFeedPostId(post.id);
+    setFeedForm({
+      title: post.title || '',
+      subtitle: post.subtitle || '',
+      imageUrl: post.imageUrl || '',
+      contentText: contentToText(post.content || []),
+      footer: post.footer || '',
+      active: post.active !== false,
+    });
+    window.requestAnimationFrame(() => {
+      homeFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
+  const updateFeedPhoto = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    try {
+      const imageUrl = await imageFileToDataUrl(file);
+      setFeedForm((current) => ({ ...current, imageUrl }));
+      setMessage('Foto carregada. Clique em Salvar para aplicar.');
+    } catch (error) {
+      setMessage(error.message);
+    }
+  };
+
+  const toggleFeedPost = async (post) => {
+    setMessage('');
+
+    try {
+      if (post.active) {
+        await api(`/api/feed/posts/${post.id}`, { method: 'DELETE' });
+      } else {
+        await api(`/api/feed/posts/${post.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ active: true }),
+        });
+      }
+
+      await loadAdminData();
+      setActiveTab('home');
     } catch (error) {
       setMessage(error.message);
     }
@@ -452,6 +605,7 @@ export default function AdminDashboard() {
 
   const tabs = [
     { id: 'dashboard', label: 'Resumo', icon: TrendingUp },
+    { id: 'home', label: 'Inicio', icon: Home },
     { id: 'studio', label: 'Studio', icon: Settings },
     { id: 'services', label: 'Servicos', icon: Package },
     { id: 'calendar', label: 'Agenda', icon: CalendarDays },
@@ -556,6 +710,122 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {activeTab === 'home' && (
+        <div className="space-y-4">
+          <div ref={homeFormRef}>
+            <Section title={editingFeedPostId ? 'Editar item do inicio' : 'Novo item do inicio'} icon={Home}>
+              <form onSubmit={saveFeedPost} className="space-y-3">
+                <Field label="Titulo">
+                  <TextInput value={feedForm.title} onChange={(event) => setFeedForm({ ...feedForm, title: event.target.value })} required />
+                </Field>
+                <Field label="Subtitulo">
+                  <TextInput value={feedForm.subtitle} onChange={(event) => setFeedForm({ ...feedForm, subtitle: event.target.value })} />
+                </Field>
+                <Field label="Imagem">
+                  <div className="mt-1 rounded-xl border border-gray-200 bg-white p-3">
+                    {feedForm.imageUrl ? (
+                      <img src={feedForm.imageUrl} alt={feedForm.title || 'Imagem do inicio'} className="h-36 w-full rounded-lg object-cover" />
+                    ) : (
+                      <div className="flex h-36 w-full flex-col items-center justify-center rounded-lg bg-gray-50 text-gray-400">
+                        <ImageIcon size={24} />
+                        <span className="mt-2 text-xs font-bold">Sem imagem</span>
+                      </div>
+                    )}
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-gray-200 p-3 text-xs font-bold text-gray-600">
+                        <Upload size={14} />
+                        {feedForm.imageUrl ? 'Trocar imagem' : 'Adicionar imagem'}
+                        <input type="file" accept="image/*" onChange={updateFeedPhoto} className="hidden" />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setFeedForm({ ...feedForm, imageUrl: '' })}
+                        disabled={!feedForm.imageUrl}
+                        className="rounded-xl border border-gray-200 p-3 text-xs font-bold text-gray-600 disabled:opacity-40"
+                      >
+                        Remover imagem
+                      </button>
+                    </div>
+                    <TextInput
+                      value={feedForm.imageUrl}
+                      onChange={(event) => setFeedForm({ ...feedForm, imageUrl: event.target.value })}
+                      placeholder="URL da imagem"
+                      className="text-xs"
+                    />
+                  </div>
+                </Field>
+                <Field label="Conteudo">
+                  <TextArea value={feedForm.contentText} onChange={(event) => setFeedForm({ ...feedForm, contentText: event.target.value })} />
+                </Field>
+                <Field label="Rodape">
+                  <TextInput value={feedForm.footer} onChange={(event) => setFeedForm({ ...feedForm, footer: event.target.value })} />
+                </Field>
+                <label className="flex items-center gap-2 text-sm font-bold text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={feedForm.active}
+                    onChange={(event) => setFeedForm({ ...feedForm, active: event.target.checked })}
+                  />
+                  Ativo no inicio
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {editingFeedPostId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingFeedPostId(null);
+                        setFeedForm(emptyFeedPost);
+                      }}
+                      className="rounded-xl border border-gray-200 p-3 text-sm font-bold text-gray-500"
+                    >
+                      Cancelar
+                    </button>
+                  )}
+                  <button type="submit" className={`rounded-xl bg-brand-dark p-3 text-sm font-extrabold text-white flex items-center justify-center gap-2 ${editingFeedPostId ? 'col-span-1' : 'col-span-2'}`}>
+                    <Save size={16} />
+                    Salvar
+                  </button>
+                </div>
+              </form>
+            </Section>
+          </div>
+
+          <Section title="Itens do inicio" icon={FileText}>
+            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+              {feedPosts.map((post) => (
+                <div key={post.id} className="min-w-[240px] rounded-xl border border-gray-100 bg-white p-3">
+                  {post.imageUrl ? (
+                    <img src={post.imageUrl} alt={post.title} className="h-28 w-full rounded-lg object-cover" />
+                  ) : (
+                    <div className="flex h-28 w-full items-center justify-center rounded-lg bg-gray-50 text-gray-300">
+                      <ImageIcon size={22} />
+                    </div>
+                  )}
+                  <div className="mt-3 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-extrabold text-gray-800">{post.title}</p>
+                      <p className="text-xs text-gray-500">{post.subtitle}</p>
+                    </div>
+                    <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${post.active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                      {post.active ? 'Ativo' : 'Inativo'}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => editFeedPost(post)} className="rounded-xl border border-gray-200 p-2 text-xs font-bold text-gray-600">
+                      Editar
+                    </button>
+                    <button type="button" onClick={() => toggleFeedPost(post)} className="rounded-xl border border-gray-200 p-2 text-xs font-bold text-gray-600">
+                      {post.active ? 'Desativar' : 'Ativar'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {!feedPosts.length && <p className="text-sm text-gray-500">Nenhum item cadastrado.</p>}
+            </div>
+          </Section>
+        </div>
+      )}
+
       {activeTab === 'studio' && (
         <Section title="Dados do Studio" icon={Settings}>
           <form onSubmit={saveStudio} className="space-y-3">
@@ -607,7 +877,7 @@ export default function AdminDashboard() {
                 <TextInput value={serviceForm.name} onChange={(event) => setServiceForm({ ...serviceForm, name: event.target.value })} required />
               </Field>
               <Field label="Descricao opcional">
-                <TextInput value={serviceForm.description} onChange={(event) => setServiceForm({ ...serviceForm, description: event.target.value })} />
+                <TextArea value={serviceForm.description} onChange={(event) => setServiceForm({ ...serviceForm, description: event.target.value })} />
               </Field>
               <Field label="Foto">
                 <div className="mt-1 rounded-xl border border-gray-200 bg-white p-3">
@@ -664,7 +934,16 @@ export default function AdminDashboard() {
                 >
                   <option value="monthly">Planos mensais de alongamento e banho de gel</option>
                   <option value="moment">Escolha seu Momento</option>
+                  {!['monthly', 'moment'].includes(serviceForm.category) && (
+                    <option value={serviceForm.category}>{serviceForm.category}</option>
+                  )}
                 </select>
+              </Field>
+              <Field label="Beneficios ou itens inclusos">
+                <TextArea value={serviceForm.benefitsText} onChange={(event) => setServiceForm({ ...serviceForm, benefitsText: event.target.value })} />
+              </Field>
+              <Field label="Observacoes importantes">
+                <TextArea value={serviceForm.notes} onChange={(event) => setServiceForm({ ...serviceForm, notes: event.target.value })} />
               </Field>
               <label className="flex items-center gap-2 text-sm font-bold text-gray-600">
                 <input
@@ -696,44 +975,53 @@ export default function AdminDashboard() {
           </Section>
           </div>
 
-          <Section title="Servicos cadastrados" icon={Package}>
-            <div className="space-y-2">
-              {services.map((service) => (
-                <div key={service.id} className="rounded-xl border border-gray-100 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 gap-3">
-                      {service.imageUrl ? (
-                        <img src={service.imageUrl} alt={service.name} className="h-14 w-14 shrink-0 rounded-xl object-cover" />
-                      ) : (
-                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gray-50 text-gray-300">
-                          <ImageIcon size={20} />
-                        </div>
-                      )}
+          {groupedServices.map((group) => (
+            <Section key={group.category} title={group.label} icon={group.category === 'monthly' ? ListChecks : Package}>
+              <button
+                type="button"
+                onClick={() => startNewService(group.category)}
+                className="w-full rounded-xl border border-brand-pink bg-brand-pink-light p-3 text-sm font-extrabold text-brand-pink-dark flex items-center justify-center gap-2"
+              >
+                <Plus size={15} />
+                Novo item
+              </button>
+              <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+                {group.items.map((service) => (
+                  <div key={service.id} className="min-w-[250px] rounded-xl border border-gray-100 bg-white p-3">
+                    {service.imageUrl ? (
+                      <img src={service.imageUrl} alt={service.name} className="h-32 w-full rounded-xl object-cover" />
+                    ) : (
+                      <div className="flex h-32 w-full items-center justify-center rounded-xl bg-gray-50 text-gray-300">
+                        <ImageIcon size={22} />
+                      </div>
+                    )}
+                    <div className="mt-3 flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-sm font-extrabold text-gray-800">{service.name}</p>
                         <p className="text-xs text-gray-500">
-                          {categoryLabels[service.category] || service.category} - {service.durationMinutes} min - {money(service.priceCents)}
+                          {service.durationMinutes} min - {money(service.priceCents)}
                         </p>
-                        {service.description && <p className="text-xs text-gray-400 mt-1">{service.description}</p>}
+                        {service.description && <p className="line-clamp-2 text-xs text-gray-400 mt-1">{service.description}</p>}
                       </div>
+                      <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${service.active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {service.active ? 'Ativo' : 'Inativo'}
+                      </span>
                     </div>
-                    <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${service.active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                      {service.active ? 'Ativo' : 'Inativo'}
-                    </span>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button type="button" onClick={() => editService(service)} className="rounded-xl border border-gray-200 p-2 text-xs font-bold text-gray-600">
+                        Editar
+                      </button>
+                      <button type="button" onClick={() => toggleService(service)} className="rounded-xl border border-gray-200 p-2 text-xs font-bold text-gray-600 flex items-center justify-center gap-1">
+                        <Trash2 size={13} />
+                        {service.active ? 'Desativar' : 'Ativar'}
+                      </button>
+                    </div>
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <button type="button" onClick={() => editService(service)} className="rounded-xl border border-gray-200 p-2 text-xs font-bold text-gray-600">
-                      Editar
-                    </button>
-                    <button type="button" onClick={() => toggleService(service)} className="rounded-xl border border-gray-200 p-2 text-xs font-bold text-gray-600 flex items-center justify-center gap-1">
-                      <Trash2 size={13} />
-                      {service.active ? 'Desativar' : 'Ativar'}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Section>
+                ))}
+                {!group.items.length && <p className="text-sm text-gray-500">Nenhum item cadastrado.</p>}
+              </div>
+            </Section>
+          ))}
         </div>
       )}
 

@@ -48,6 +48,7 @@ export default function Agendamento() {
   const [services, setServices] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || 'moment');
   const [selectedService, setSelectedService] = useState(null);
+  const [showCalendar, setShowCalendar] = useState(false);
   const [date, setDate] = useState('');
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [slotsByDate, setSlotsByDate] = useState({});
@@ -85,6 +86,7 @@ export default function Agendamento() {
         setServices(data);
         setSelectedCategory(initialCategory);
         setSelectedService(targetService || null);
+        setShowCalendar(Boolean(appointmentId) || searchParams.get('step') === 'calendar');
       })
       .catch((error) => setMessage(error.message))
       .finally(() => active && setLoading(false));
@@ -95,7 +97,7 @@ export default function Agendamento() {
   }, [serviceIdParam]);
 
   useEffect(() => {
-    if (!selectedService) return;
+    if (!selectedService || !showCalendar) return;
 
     let active = true;
     setDate('');
@@ -119,15 +121,37 @@ export default function Agendamento() {
     return () => {
       active = false;
     };
-  }, [selectedService, calendarDays]);
+  }, [selectedService, showCalendar, calendarDays]);
 
-  const openCalendar = (service) => {
+  const openDetails = (service) => {
     setSelectedService(service);
+    setShowCalendar(false);
+    setDate('');
+    setSelectedSlot(null);
     setSearchParams({
       serviceId: service.id,
       category: service.category || 'moment',
       ...(appointmentId ? { appointmentId } : {}),
     });
+  };
+
+  const continueToCalendar = () => {
+    if (!selectedService) return;
+    setShowCalendar(true);
+    setSearchParams({
+      serviceId: selectedService.id,
+      category: selectedService.category || 'moment',
+      step: 'calendar',
+      ...(appointmentId ? { appointmentId } : {}),
+    });
+  };
+
+  const backFromDetails = () => {
+    setSelectedService(null);
+    setShowCalendar(false);
+    setDate('');
+    setSelectedSlot(null);
+    setSearchParams({ category: selectedCategory, ...(appointmentId ? { appointmentId } : {}) });
   };
 
   const chooseDate = (day) => {
@@ -187,10 +211,14 @@ export default function Agendamento() {
     <div className="bg-brand-pink-light h-full pt-8 px-5 pb-32 overflow-y-auto no-scrollbar">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-6 border-l-4 border-brand-pink-dark pl-4 py-1">
         <h2 className="text-2xl font-extrabold text-brand-dark tracking-tighter">
-          {selectedService ? 'Escolha o Dia' : 'Escolha seu Momento'}
+          {selectedService && showCalendar ? 'Escolha o Dia' : selectedService ? 'Detalhes' : 'Escolha seu Momento'}
         </h2>
         <p className="text-gray-500 text-sm mt-1">
-          {selectedService ? 'Depois de escolher o dia, selecione um horario livre.' : 'Selecione um servico para abrir o calendario.'}
+          {selectedService && showCalendar
+            ? 'Depois de escolher o dia, selecione um horario livre.'
+            : selectedService
+              ? 'Confira as informacoes antes de escolher o horario.'
+              : 'Selecione um servico para ver os detalhes.'}
         </p>
       </motion.div>
 
@@ -223,7 +251,7 @@ export default function Agendamento() {
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.04 }}
-                onClick={() => openCalendar(service)}
+                onClick={() => openDetails(service)}
                 className="w-full p-4 bg-white border-2 rounded-2xl text-left transition-all flex justify-between items-center border-gray-100 shadow-sm active:scale-[0.99]"
               >
                 <div className="flex items-center gap-3">
@@ -244,7 +272,7 @@ export default function Agendamento() {
                 </div>
                 <div className="text-right">
                   <span className="font-extrabold text-lg text-brand-dark">{formatMoney(service.priceCents)}</span>
-                  <p className="text-[10px] font-bold text-brand-pink-dark mt-1">Abrir agenda</p>
+                  <p className="text-[10px] font-bold text-brand-pink-dark mt-1">Ver detalhes</p>
                 </div>
               </motion.button>
             ))}
@@ -258,19 +286,102 @@ export default function Agendamento() {
         </>
       )}
 
-      {selectedService && (
+      {selectedService && !showCalendar && (
+        <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+          <button
+            type="button"
+            onClick={backFromDetails}
+            className="text-xs font-bold text-gray-500 flex items-center gap-1"
+          >
+            <ArrowLeft size={14} />
+            voltar
+          </button>
+
+          <section className="bg-white border border-gray-100 rounded-[28px] shadow-sm overflow-hidden">
+            {selectedService.imageUrl ? (
+              <img src={selectedService.imageUrl} alt={selectedService.name} className="h-56 w-full object-cover" />
+            ) : (
+              <div className="h-48 w-full bg-gradient-to-br from-brand-pink-light to-white flex items-center justify-center text-brand-pink-dark">
+                <Package size={42} />
+              </div>
+            )}
+
+            <div className="p-5 space-y-5">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-brand-pink-dark">
+                  {categoryLabels[selectedService.category] || selectedService.category}
+                </p>
+                <h3 className="mt-1 text-2xl font-extrabold text-brand-dark tracking-tight">
+                  {selectedService.name}
+                </h3>
+                {selectedService.description && (
+                  <p className="mt-3 text-sm leading-relaxed text-gray-600">
+                    {selectedService.description}
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-brand-pink-light p-4">
+                  <p className="text-[11px] font-bold uppercase text-gray-500">Valor</p>
+                  <p className="text-lg font-extrabold text-brand-dark">{formatMoney(selectedService.priceCents)}</p>
+                </div>
+                <div className="rounded-2xl bg-gray-50 p-4">
+                  <p className="text-[11px] font-bold uppercase text-gray-500">Duracao</p>
+                  <p className="text-lg font-extrabold text-brand-dark">{selectedService.durationMinutes} min</p>
+                </div>
+              </div>
+
+              {!!selectedService.benefits?.length && (
+                <div>
+                  <h4 className="text-sm font-extrabold text-brand-dark mb-2">Incluso</h4>
+                  <div className="space-y-2">
+                    {selectedService.benefits.map((item) => (
+                      <div key={item} className="flex items-start gap-2 text-sm text-gray-600">
+                        <CheckCircle size={15} className="mt-[2px] shrink-0 text-brand-pink-dark" />
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedService.notes && (
+                <div className="rounded-2xl border border-brand-pink bg-brand-pink-light/60 p-4">
+                  <h4 className="text-sm font-extrabold text-brand-dark mb-1">Observacoes importantes</h4>
+                  <p className="text-sm text-gray-600 leading-relaxed">{selectedService.notes}</p>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={continueToCalendar}
+                className="w-full bg-brand-dark text-white p-4 rounded-2xl font-extrabold text-base shadow-lg active:scale-95 transition-all"
+              >
+                Escolher horario
+              </button>
+            </div>
+          </section>
+        </motion.div>
+      )}
+
+      {selectedService && showCalendar && (
         <div className="space-y-4">
           <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
             <button
               type="button"
               onClick={() => {
-                setSelectedService(null);
-                setSearchParams({ category: selectedCategory, ...(appointmentId ? { appointmentId } : {}) });
+                if (appointmentId) {
+                  navigate('/usuario');
+                  return;
+                }
+                setShowCalendar(false);
+                setSearchParams({ serviceId: selectedService.id, category: selectedCategory });
               }}
               className="text-xs font-bold text-gray-500 flex items-center gap-1 mb-3"
             >
               <ArrowLeft size={14} />
-              trocar servico
+              {appointmentId ? 'voltar' : 'ver detalhes'}
             </button>
             <div className="flex items-start justify-between gap-3">
               <div className="flex gap-3">

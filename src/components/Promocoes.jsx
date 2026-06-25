@@ -117,7 +117,7 @@ export default function Promocoes() {
           Planos mensais de alongamento e banho de gel
         </h1>
         <p className="text-gray-500 text-sm">
-          Toque em Eu Quero para abrir o calendario.
+          Toque em Eu Quero para ver os detalhes antes de escolher o horario.
         </p>
       </div>
 
